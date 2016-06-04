@@ -10,12 +10,16 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
 )
 
-var tagFilter = flag.String("tag", "", "only show files with this build tag")
+var (
+	tagFilter = flag.String("tag", "", "only show files with this build tag")
+	exclude   = flag.String("exclude", "", "exclude paths matching this regular expression")
+)
 
 func main() {
 	flag.Parse()
@@ -25,9 +29,25 @@ func main() {
 		paths = []string{"."}
 	}
 
+	var excludePat *regexp.Regexp
+	if *exclude != "" {
+		var err error
+		excludePat, err = regexp.Compile(*exclude)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
 	var wg sync.WaitGroup
 	for _, root := range paths {
 		err := filepath.Walk(root, func(path string, fi os.FileInfo, err error) error {
+			if excludePat != nil && excludePat.MatchString(path) {
+				if fi.Mode().IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+
 			if fi.Mode().IsDir() {
 				if name := fi.Name(); path != root && (name[0] == '_' || name[0] == '.') {
 					return filepath.SkipDir
